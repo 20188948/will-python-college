@@ -4,21 +4,30 @@ def menu():
     while True:
         print("######################################################")
         print("Welcome to RBSX Group Ltd\n")
-        print("Which conversion would you like to make today?")
-        print("1. Pound Sterling (GBP) to Euros (EUR)")
-        print("2. Euros (EUR) to Pound Sterling (GBP)")
-        print("3. Pound (GBP) to Australian Dollars (AUD)")
-        print("4. Australian Dollars (AUD) to Pound Sterling (GBP)")
-        print("5. Pound Sterling (GBP) to Japanese Yen (JPY)")
-        print("6. Japanese Yen (JPY) to Pound Sterling (GBP)")
-        print("7. Pound Sterling (GBP) to American Dollar (USD)")
-        print("8. American Dollar(USD) to Pound Sterling (GBP)")
-        print("######################################################")
- 
-        choice = input("Please enter the number of your choice (1-8): ")
- 
-        if choice.isdigit() and 1 <= int(choice) <= 8:
+        print("Select one of the available options:")
+        print("1.conversions? ")
+        print("2. Compare GBP with other currencies")
+        print("3. Select the currency for performance check")
+        choice = input()
+        if choice.isdigit() and int(choice) == 1:
+            print("Select one of the following currency conversion options:")
+
+            print("1. Pound Sterling (GBP) to Euros (EUR)")
+            print("2. Euros (EUR) to Pound Sterling (GBP)")
+            print("3. Pound (GBP) to Australian Dollars (AUD)")
+            print("4. Australian Dollars (AUD) to Pound Sterling (GBP)")
+            print("5. Pound Sterling (GBP) to Japanese Yen (JPY)")
+            print("6. Japanese Yen (JPY) to Pound Sterling (GBP)")
+            print("7. Pound Sterling (GBP) to American Dollar (USD)")
+            print("8. American Dollar(USD) to Pound Sterling (GBP)")
+            print("######################################################")
+            choice = input()
             return choice
+        elif choice.isdigit() and int(choice) == 2:
+            print("do the comparison")
+       
+        elif choice.isdigit() and int(choice) == 3:
+            print("do the comparison")
         else:
             print("Sorry, you did not enter a valid choice")
  
@@ -37,6 +46,7 @@ def get_currency(menu_choice):
  
 def get_conversion_rate(currency):
     df = pd.read_csv("Task_4a_RBSX_data.csv")
+    df.drop_duplicates(inplace = True)
     df['Date'] = pd.to_datetime(df['Date'], format='mixed')
     return round(df[currency].iloc[-1], 2)
  
