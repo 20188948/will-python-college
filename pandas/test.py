@@ -4,7 +4,7 @@ import numpy as np
 
 
 df = pd.read_csv("/workspaces/codespaces-blank/Task_4a_RBSX_data.csv")
-'''
+
 #df.info()
 #df.head()
 
@@ -13,11 +13,11 @@ df = pd.read_csv("/workspaces/codespaces-blank/Task_4a_RBSX_data.csv")
 currency = 'GBP +AC0- EUR'
 conversion_rate = round(df[currency].iloc[-1],2)
 print("conversion_rate = ", conversion_rate)
-'''
+
 
 # df set to date, plus both GBP currency data series
 df1 = df[['Date', 'GBP +AC0- EUR', 'GBP +AC0- USD']]
-df1['Date'] = pd.to_datetime(df1['Date'],format='%d/%m/%Y')
+df1['Date'] = pd.to_datetime(df1['Date'],dayfirst=True,format='mixed')
 print(df1)
 
 
