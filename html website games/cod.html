@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>COD MW Replica 5v5 Shooter</title>
+  <style>
+    body, html { margin:0; overflow:hidden; background:#0b0e14; color:#eee; font-family:system-ui; }
+    #hud { position:absolute; left:10px; top:10px; z-index:100; background:rgba(0,0,0,.35); padding:10px; border-radius:8px; }
+    #info { position:absolute; right:10px; top:10px; z-index:100; text-align:right; background:rgba(0,0,0,.35); padding:10px; border-radius:8px; }
+    #message { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#fff; font-size:40px; text-shadow:0 0 12px #000; pointer-events:none; }
+    a { color:#66ccff }
+    canvas { display:block }
+  </style>
+</head>
+<body>
+  <div id="hud">Health: <span id="hp">100</span><br>Ammo: <span id="ammo">∞</span></div>
+  <div id="info">Blues: <span id="blues">5</span><br>Reds: <span id="reds">5</span></div>
+  <div id="message"></div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.min.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x10172b);
+    const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+
+    const renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    window.addEventListener('resize', ()=> {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    const light=new THREE.DirectionalLight(0xffffff,1);
+    light.position.set(5,10,8);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x888888));
+
+    const ground=new THREE.Mesh(
+      new THREE.PlaneGeometry(40,40),
+      new THREE.MeshStandardMaterial({color:0x283c52})
+    );
+    ground.rotation.x = -Math.PI/2;
+    scene.add(ground);
+
+    const kit = [];
+    const barrierMaterial = new THREE.MeshStandardMaterial({color:0x476d94});
+    const boxes=[[-5,1,-5],[5,1,5],[-7,1,6],[6,1,-6],[0,1,-10],[0,1,10]];
+    boxes.forEach(([x,y,z])=>{
+      const b=new THREE.Mesh(new THREE.BoxGeometry(4,2,2), barrierMaterial);
+      b.position.set(x,y,z);
+      scene.add(b);
+      kit.push(b);
+    });
+
+    const player = {
+      position: new THREE.Vector3(0, 1.7, 12),
+      velocity: new THREE.Vector3(),
+      direction: new THREE.Vector3(),
+      speed: 6,
+      health: 100,
+      team:'blue',
+      shootCooldown: 0
+    };
+    camera.position.copy(player.position);
+
+    const pointer = {x:0,y:0};
+    let enabled=false, move = {f:false,b:false,l:false,r:false};
+    const bullets=[];
+    const bots=[];
+    const message = document.getElementById('message');
+    const hpEl = document.getElementById('hp'), ammoEl = document.getElementById('ammo');
+    const blueEl = document.getElementById('blues'), redEl = document.getElementById('reds');
+
+    const spawnPoints = {
+      blue:[new THREE.Vector3(-10,0,-12),new THREE.Vector3(-8,0,-14),new THREE.Vector3(-12,0,-10),new THREE.Vector3(-10,0,-10),new THREE.Vector3(-7,0,-12)],
+      red:[new THREE.Vector3(10,0,12),new THREE.Vector3(8,0,14),new THREE.Vector3(12,0,10),new THREE.Vector3(10,0,10),new THREE.Vector3(7,0,12)]
+    };
+
+    const botModelMaterial = (team) => new THREE.MeshStandardMaterial({color:team==='blue'?0x46aaff:0xff4f4f});
+    function spawnBot(team, index) {
+      const pose = spawnPoints[team][index].clone();
+      const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.4,1.0,4,8), botModelMaterial(team));
+      mesh.position.copy(pose).setY(1.0);
+      scene.add(mesh);
+      bots.push({mesh, team, health:100, velocity:new THREE.Vector3(), targetTimer:0, state:'patrol'});
+    }
+    for (let i=0;i<5;i++) spawnBot('blue', i);
+    for (let i=0;i<5;i++) spawnBot('red', i);
+
+    function lockPointer() {
+      renderer.domElement.requestPointerLock();
+    }
+    document.body.addEventListener('click', lockPointer);
+    document.addEventListener('pointerlockchange', () => enabled = !!document.pointerLockElement);
+
+    document.addEventListener('mousemove', e => {
+      if (!enabled) return;
+      player.direction.x -= e.movementX * 0.002;
+      player.direction.y -= e.movementY * 0.002;
+      player.direction.y = Math.max(-Math.PI/2, Math.min(Math.PI/2, player.direction.y));
+    });
+
+    document.addEventListener('keydown', e => { if(e.key==='w') move.f=true; if(e.key==='s') move.b=true; if(e.key==='a') move.l=true; if(e.key==='d') move.r=true; if(e.key==='Escape') document.exitPointerLock(); });
+    document.addEventListener('keyup', e => { if(e.key==='w') move.f=false; if(e.key==='s') move.b=false; if(e.key==='a') move.l=false; if(e.key==='d') move.r=false; });
+
+    function shoot(fromPos, direction, team,isPlayer=false) {
+      bullets.push({
+        mesh: new THREE.Mesh(new THREE.SphereGeometry(0.08,8,8), new THREE.MeshBasicMaterial({color:team==='blue'?0x66bbff:0xff9999})),
+        position: fromPos.clone(), velocity: direction.clone().multiplyScalar(40),
+        team, life: 2, owner:isPlayer? 'player':'bot'
+      });
+    }
+
+    function tryHit(target, originPoint, radius=0.7) {
+      const d = target.mesh.position.distanceTo(originPoint);
+      return d <= radius;
+    }
+
+    function resetGame() {
+      player.health = 100;
+      player.position.set(0,1.7,12);
+      camera.position.copy(player.position);
+      player.shootCooldown = 0;
+      bots.forEach((bot,i)=>{
+        bot.health=100;
+        const team=bot.team;
+        bot.mesh.position.copy(spawnPoints[team][i%5]).setY(1.0);
+        bot.state='patrol'; bot.targetTimer=0;
+      });
+      message.innerText ='';
+    }
+
+    document.addEventListener('mousedown', e => {
+      if (e.button !== 0 || player.shootCooldown>0 || player.health<=0) return;
+      const dir = new THREE.Vector3(
+        Math.sin(player.direction.x)*Math.cos(player.direction.y),
+        Math.sin(player.direction.y),
+        Math.cos(player.direction.x)*Math.cos(player.direction.y)
+      ).normalize();
+      shoot(player.position.clone(), dir, player.team, true);
+      player.shootCooldown = 0.2;
+    });
+
+    let last = performance.now()/1000;
+    function animate() {
+      const now = performance.now()/1000;
+      const dt = Math.min(0.03, now - last);
+      last = now;
+      if (player.health > 0) {
+        const forward = new THREE.Vector3(Math.sin(player.direction.x),0,Math.cos(player.direction.x));
+        const right = new THREE.Vector3(Math.cos(player.direction.x),0,-Math.sin(player.direction.x));
+        const motion = new THREE.Vector3();
+        if (move.f) motion.add(forward);
+        if (move.b) motion.sub(forward);
+        if (move.l) motion.add(right);
+        if (move.r) motion.sub(right);
+        if (motion.lengthSq()>0) {
+          motion.normalize().multiplyScalar(player.speed * dt);
+          const next=player.position.clone().add(motion);
+          let coll=false;
+          kit.forEach(b => { if (b.geometry.boundingBox===null) b.geometry.computeBoundingBox(); const bpos=b.position; const min=b.geometry.boundingBox.min.clone().add(bpos); const max=b.geometry.boundingBox.max.clone().add(bpos); if (next.x > min.x-0.5 && next.x < max.x+0.5 && next.z > min.z-0.5 && next.z < max.z+0.5) coll=true; });
+          if (!coll) player.position.copy(next);
+        }
+        player.shootCooldown=Math.max(0, player.shootCooldown-dt);
+      }
+      camera.position.copy(player.position);
+      camera.position.y = player.position.y;
+      camera.rotation.set(player.direction.y, player.direction.x, 0);
+
+      bullets.forEach((p,i)=> {
+        p.position.addScaledVector(p.velocity, dt);
+        p.mesh.position.copy(p.position);
+        p.life -= dt;
+        if (p.life <= 0) {
+          scene.remove(p.mesh); bullets.splice(i,1); return;
+        }
+        if (p.team !== player.team && tryHit(player, p.position, 0.5) && p.owner!='player') {
+          player.health -= 10;
+          scene.remove(p.mesh); bullets.splice(i,1); return;
+        }
+        bots.forEach((bot,j)=> {
+          if (bot.team !== p.team && tryHit(bot, p.position,0.9)) {
+            bot.health -= 35;
+            scene.remove(p.mesh); bullets.splice(i,1);
+            if (bot.health<=0) { scene.remove(bot.mesh); bot.dead=true; }
+          }
+        });
+      });
+
+      bots.forEach(bot => {
+        if (bot.dead) return;
+        bot.targetTimer -= dt;
+        const enemyTeam=bot.team==='blue' ? 'red' : 'blue';
+        const enemies = bot.team==='blue' ? bots.filter(b=>b.team==='red' && !b.dead) : bots.filter(b=>b.team==='blue' && !b.dead);
+        let target = enemies.length ? enemies[0] : null;
+        if (player.health>0 && player.team!==bot.team) target = player;
+        if (!target) return;
+        const aim = target === player ? player.position:target.mesh.position;
+        const dist = aim.distanceTo(bot.mesh.position);
+        if (dist < 12 && Math.random()<0.8*dt) {
+          const dir = aim.clone().sub(bot.mesh.position).normalize();
+          shoot(bot.mesh.position.clone().setY(1.6), dir, bot.team);
+        }
+        if (bot.targetTimer <= 0) {
+          bot.targetTimer = 1 + Math.random()*1.8;
+          const walk = (player.health>0 && dist<15 ? aim.clone() : spawnPoints[bot.team][Math.floor(Math.random()*5)]);
+          bot.velocity.copy(walk.sub(bot.mesh.position).setY(0).normalize().multiplyScalar(2));
+        }
+        if (bot.velocity.lengthSq()>0) {
+          bot.mesh.position.addScaledVector(bot.velocity, dt);
+          bot.mesh.position.y=1;
+        }
+      });
+
+      blueEl.innerText = bots.filter(b=>b.team==='blue' && !b.dead).length;
+      redEl.innerText = bots.filter(b=>b.team==='red' && !b.dead).length;
+      hpEl.innerText = Math.max(0,Math.floor(player.health));
+
+      const blueAlive = bots.some(b=>b.team==='blue' && !b.dead);
+      const redAlive = bots.some(b=>b.team==='red' && !b.dead);
+      if ((!blueAlive || !redAlive) && !message.innerText) {
+        message.innerText = (!blueAlive ? "Red Team Wins!" : "Blue Team Wins!") + "  (press R to restart)";
+      }
+      if (player.health<=0 && !message.innerText) message.innerText = "You Died! (R to restart)";
+
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key.toLowerCase()==='r') resetGame();
+    });
+
+    resetGame();
+    animate();
+  </script>
+</body>
+</html>
