@@ -128,8 +128,8 @@ plt.colorbar()
 '''
 
 #bar charts
-x=np.array(["A", "B", "C", "D"])
-y=np.array([3, 8, 1, 10])
+x=np.array(["A", "B", "C", "D","E", "F", "G", "H", "I", "J"])
+y=np.array([3, 8, 1, 10, 5, 6, 4, 7, 9, 2])
 plt.bar(x,y,color='hotpink',width='0.9')
 
 
@@ -143,4 +143,4 @@ plt.bar(x,y,color='hotpink',width='0.9')
 plt.suptitle('SUPERTITLE',size='20')
 #shows the chart and saves it as a png to view 
 print(plt.show())
-plt.savefig('Graph.png')
+plt.savefig('Graph2.png')

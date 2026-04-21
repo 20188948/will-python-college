@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-df = pd.read_csv('/workspaces/codespaces-blank/customers-1000.csv')
+df = pd.read_csv('/workspaces/csv/customers-1000.csv')
 df.head()
 
 
